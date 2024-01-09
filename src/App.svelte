@@ -9,34 +9,39 @@
   // This is all a bit clunky for now
   // I should instead generate an e.g. json which contains the gcode, sketch, and video filename
   // Since these will have to be paired up to do the transcription
-  let videoValue = "/videoBox.mp4";
+  let videoValue = "/videoLineVase.mp4";
   let videoElement;
   let logValue = "log";
   let gcodeValue = "gcode";
   let sketchValue = "sketch";
   let gcodeFileInput;
   let sketchFileInput;
+  let traceFileInput;
 
   let gcodeView; // the gcode CodeMirror component view
-  let lineNum = 0;
+  let gcodeLineNum = 0;
   let gcodeLinesToTimeStamps = {};
   let fabscriptionComplete = false;
   let autoScroller = false; // to distinguish editor changes made by user or to auto-advance selection
 
+  let sketchView; // the js CodeMirror component view
+  let sketchLineNum = 0;
+  let traceLog;
+
   async function getExampleGcode() {
-    let response = await fetch("/printBox.gcode");
+    let response = await fetch("/printLineVase.gcode");
     let responseText = await response.text();
     gcodeValue = responseText;
   }
 
   async function getExampleSketch() {
-    let response = await fetch("/sketch.js");
+    let response = await fetch("/sketchLineVase.js");
     let responseText = await response.text();
     sketchValue = responseText;
   }
 
   async function getExampleLog() {
-    let response = await fetch("/logBox.txt");
+    let response = await fetch("/logLineVase.txt");
     let responseText = await response.text();
     logValue = responseText;
   }
@@ -64,21 +69,54 @@
     sketchValue = event.target.result;
   }
 
+  async function onTraceFileSelected(e) {
+    let traceLog = e.target.files[0];
+    const reader = new FileReader();
+    reader.onload = handleTraceFileLoad;
+    reader.readAsText(traceLog);
+  }
+
+  function handleTraceFileLoad(event) {
+    traceLog = event.target.result;
+    traceLog = traceLog.split("\n");
+    console.log(traceLog);
+  }
+
   function calcDistance(p1, p2) {
     const X = p2[0] - p1[0];
     const Y = p2[1] - p1[1];
     const Z = p2[2] - p1[2];
-    return Math.sqrt(X * X + Y * Y + Z * Z);
+    const E = p2[3] - p1[3];
+    return Math.sqrt(X * X + Y * Y + Z * Z + E * E);
   }
 
   function fabscribe() {
     // First gather all position data from the gcode
     let commands = gcodeValue.split("\n");
     let gcodePositionData = [];
-    let position = [0, 0, 0];
+    let position = [0, 0, 0, 0]; // need to account for G92 setting these
+    let relativeDimensionalPositioning = false;
+    let relativeExtrusion = true;
     commands.forEach((command) => {
       let fields = command.split(" ");
-      let xPos, yPos, zPos;
+      let xPos, yPos, zPos, ePos;
+      // account for changes in positioning
+      switch (fields[0]) {
+        case "M82":
+          relativeExtrusion = false;
+          break;
+        case "M83":
+          console.log('setting relative extrusion');
+          relativeExtrusion = true;
+          break;
+        case "G90":
+          relativeDimensionalPositioning = false;
+          break;
+        case "G91":
+          relativeDimensionalPositioning = true;
+          break;
+      }
+      console.log('done with that swtich')
       if (["G0", "G1"].includes(fields[0])) {
         fields.forEach((field) => {
           let fieldValue = field.substring(1);
@@ -92,21 +130,39 @@
             case "Z":
               zPos = fieldValue;
               break;
-            // TODO
-            // E is in relative, so have to keep track of relative/absolute mode to do this
-            // i'll also need to implement relative mode for other dimensional axes
-            // case 'E':
+            case "E":
+              // E is in relative, so have to keep track of relative/absolute mode to do this
+              // adding proof of concept, will probably need more testing
+              // also implementing relative mode for other dimensional axes
+              ePos = fieldValue;
+              break;
           }
         });
+
         // if the move command didn't specify a pos for a dimension, inherit last value
-        xPos = xPos ? xPos : position[0];
-        yPos = yPos ? yPos : position[1];
-        zPos = zPos ? zPos : position[2];
-        position = [xPos, yPos, zPos];
+        if (relativeDimensionalPositioning) {
+          xPos = xPos ? Number(xPos) + Number(position[0]) : position[0];
+          yPos = yPos ? Number(yPos) + Number(position[1]) : position[1];
+          zPos = zPos ? Number(zPos) + Number(position[2]) : position[2];
+        } else {
+          // i.e. absolute dimensional positioning
+          xPos = xPos ? xPos : position[0];
+          yPos = yPos ? yPos : position[1];
+          zPos = zPos ? zPos : position[2];
+        }
+        if (relativeExtrusion) {
+          ePos = ePos ? Number(ePos) + Number(position[3]) : position[3];
+        }
+        else {
+          // i.e. absolute extrusion
+          ePos = ePos ? ePos : position[3];
+        }
+        position = [xPos, yPos, zPos, ePos];
         gcodePositionData.push(position);
       } else {
         gcodePositionData.push(null);
       }
+      console.log(gcodePositionData);
     });
 
     // Now gather position data from the log file alongside timestamps
@@ -116,7 +172,7 @@
       let entryData = entry.split(",");
       let timestamp = entryData[0];
       let fields = entryData[1].split(" ");
-      let xPos, yPos, zPos;
+      let xPos, yPos, zPos, ePos;
       fields.forEach((field) => {
         let fieldValue = field.substring(2);
         switch (field.charAt(0)) {
@@ -129,11 +185,11 @@
           case "Z":
             zPos = fieldValue;
             break;
-          // skipping E for now
-          // TODO: implement E
+          case "E":
+            ePos = fieldValue;
         }
       });
-      logPositionData.push([timestamp, [xPos, yPos, zPos]]);
+      logPositionData.push([timestamp, [xPos, yPos, zPos, ePos]]);
     });
 
     // Now match timestamps to gcode lines
@@ -143,7 +199,7 @@
       if (gcodePos) {
         // some lines are null
         let minDist = 500;
-        let lineNum = null;
+        let gcodeLineNum = null;
         let timestamp = null;
         for (let j = 0; j < logPositionData.length; j++) {
           let positionData = logPositionData[j];
@@ -151,14 +207,14 @@
           let dist = calcDistance(gcodePos, logPos);
           if (dist < minDist) {
             minDist = dist;
-            lineNum = index;
+            gcodeLineNum = index;
             timestamp = positionData[0];
           }
         }
-        gcodeLinesToTimeStamps[Number(lineNum + 1)] = timestamp;
+        gcodeLinesToTimeStamps[Number(gcodeLineNum + 1)] = timestamp;
       }
     }
-
+    console.log("fabscription results:");
     console.log(gcodeLinesToTimeStamps);
     fabscriptionComplete = true;
   }
@@ -170,13 +226,14 @@
   // CODEMIRROR EXTENSION
   function getLineSelection() {
     return EditorView.updateListener.of((update) => {
-      let updatedlineNum = update.view.state.doc.lineAt(
+      let updatedgcodeLineNum = update.view.state.doc.lineAt(
         update.view.state.selection.main.head,
       ).number;
-      if (lineNum != updatedlineNum) {
-        lineNum = updatedlineNum;
+      if (gcodeLineNum != updatedgcodeLineNum) {
+        gcodeLineNum = updatedgcodeLineNum;
+        syncSketchLine(gcodeLineNum);
         if (!autoScroller) {
-          gcodeSelectionToVideoTimeStamp(lineNum);
+          gcodeSelectionToVideoTimeStamp(gcodeLineNum);
         }
       }
     });
@@ -209,7 +266,6 @@
     for (var gcodeLine in gcodeLinesToTimeStamps) {
       let t = gcodeLinesToTimeStamps[gcodeLine] / 1000; // milliseconds to seconds
       if (t >= currentTime) {
-        console.log("here with line", gcodeLine);
         const line = gcodeView.state.doc.line(gcodeLine);
         autoScroller = true;
         gcodeView.dispatch({
@@ -221,6 +277,22 @@
         autoScroller = false;
         break;
       }
+    }
+  }
+
+  function syncSketchLine(gcodeLine) {
+    if (traceLog) {
+      // trace log currently has the complete gcode line and the line number seperated by a comma
+      // probably don't need the full gcode line?
+      let sketchLineNum = traceLog[gcodeLine].split(",")[1];
+
+      const sketchLine = sketchView.state.doc.line(sketchLineNum);
+      sketchView.dispatch({
+        // Set selection to that entire line.
+        selection: { head: sketchLine.from, anchor: sketchLine.to },
+        // Ensure the selection is shown in viewport
+        scrollIntoView: true,
+      });
     }
   }
 
@@ -294,11 +366,20 @@
               bind:this={sketchFileInput}
               style="display: none;"
             />
+            <button on:click={() => traceFileInput.click()}>Set Trace</button>
+            <input
+              type="file"
+              accept=".txt"
+              on:change={(e) => onTraceFileSelected(e)}
+              bind:this={traceFileInput}
+              style="display: none;"
+            />
           </div>
         </div>
         <div>
           <CodeMirror
             bind:value={sketchValue}
+            bind:view={sketchView}
             lang={javascript()}
             styles={{
               "&": {

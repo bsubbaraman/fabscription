@@ -48,9 +48,10 @@ function setup() {
   stopButton.position(20, 100);
   stopButton.mousePressed(function () {
     fab.stopPrint(); // stop streaming the commands to printer
+    
     media_recorder.stop();
 
-    // save log file
+    // save log file (gcode timestamps)
     let logWriter = createWriter('log.txt');
     fab.log.forEach((logEntry) => logWriter.print(logEntry));
     // close the PrintWriter and save the file
@@ -59,6 +60,10 @@ function setup() {
     let gcodeWriter = createWriter('print.gcode')
     fab.sentCommandsFiltered.forEach((code) => gcodeWriter.print(code));
     gcodeWriter.close();
+
+    let stackWriter = createWriter('stack.txt');
+    fab.trace.forEach((traceEntry) => stackWriter.print(traceEntry));
+    stackWriter.close();
 
   });
 
@@ -75,60 +80,13 @@ function setup() {
 
 function fabDraw() {
   // setup!
-  fab.autoHome();
-
+  fab.setTemps(205, 60);
   fab.setAbsolutePosition(); // set all axes (x.y/z/extruder) to absolute
   fab.setERelative(); // put extruder in relative mode, independent of other axes
-  fab.setTemps(205, 60);
+  fab.autoHome();
+
+  
   fab.introLine(0.2); // draw to lines on the left side of the print bed
-
-  /// COMMENT OUT
-  // let increment = PI / 100
-  // fab.moveRetract(radius * cos(0) + fab.centerX, radius * sin(0) + fab.centerY, 0, 150); // move to start
-  // let x = 0;
-  // let y = 0;
-  // let z = 0;
-  // let height = 50
-  // let zOverall = 0;
-  // let theta = 0;
-
-  // let layerCount = 0;
-  // let layerIncrement = -1;
-  // let idx = 0;
-  // let segmentLengths = [50, 40, 25, 20, 10, 8, 5, 4]
-
-  // // print a couple of layers for stability
-  // let radiusTheta = map(zOverall, 0, height, 0, TWO_PI);
-  // let shapeAmplitude = 2;
-  // for (zOverall = 0; zOverall <= 1; zOverall += 0.2) {
-  //   for (let t = 0; t <= TWO_PI; t += increment) {
-  //     radius = 25 + shapeAmplitude*sin(radiusTheta);
-  //     x = radius * cos(t) + fab.centerX;
-  //     y = radius * sin(t) + fab.centerY;
-  //     fab.moveExtrude(x, y, zOverall, 10);
-  //   }
-  // }
-
-  // while (zOverall < height) {
-  //   let radiusTheta = map(zOverall, 0, height, 0, TWO_PI);
-  //   radius = 25 + shapeAmplitude*sin(radiusTheta); 
-  //   let s = zOverall < 0.5 ? 10 : 10;
-  //   let segmentLength = segmentLengths[layerCount];
-  //   theta = twoForwardOneBack(zOverall, s, increment, segmentLength);
-  //   idx += 1;
-
-  //   if (idx % (200 / segmentLength) == 0) {
-  //     idx = 0;
-
-  //     if (layerCount == 0 || layerCount == segmentLengths.length - 1) {
-  //       layerIncrement *= -1;
-  //     }
-  //     layerCount = layerCount + layerIncrement;
-  //     zOverall += map(layerCount, 0, segmentLengths.length - 1, 0.8, 1.5); // .8, 1.5
-
-  //   }
-  // }
-  /// END CCOMMENTED OUT
 
 
   // variables for our hollow cube!
@@ -141,7 +99,7 @@ function fabDraw() {
   // design our hollow cube!
   // fab.moveRetract(x, y, layerHeight); // move to the start (x,y,z) position without extruding
 
-  for (let z = layerHeight; z <= sideLength; z += layerHeight) {
+  for (let z = layerHeight; z <= 2; z += layerHeight) {
     if (z == layerHeight) { // if it's the first layer
       speed = 10; // slow print speeed down for the first layer
     } else {
@@ -157,27 +115,9 @@ function fabDraw() {
   // currently hardcoded to be 14, as this is empirically what I see
   // this should probably be changed to keep track of how many messages are sent at the start until
   // the buffer is hit
-  for (let pad = 0; pad < 14; pad += 1) {
-    fab.move(100, 100, sideLength);
-  }
-
-
-  // fab.presentPart();
-
-  // // calibration line, testing sine wave parameters
-  // fab.moveRetract(50, 100, 0.2);
-  // fab.moveExtrude(60, 100, 0.2);
-
-  // loopy(60, 65, 10, 0.5, null);
-  // fab.moveExtrude(80, 100, 0.2)
-  // loopy(80, 85, 8, 0.5, null);
-  // fab.moveExtrude(100, 100, 0.2)
-  // loopy(100, 105, 5, 0.5, null);
-  // fab.moveExtrude(120, 100, 0.2)
-  // loopy(120, 125, 3, 1, null);
-  // fab.moveExtrude(140, 100, 0.2)
-  // loopy(140, 160, 20, 0.5, null);
-  // fab.moveExtrude(180, 100, 0.2)
+  // for (let pad = 0; pad < 14; pad += 1) {
+  //   fab.move(100, 100, sideLength);
+  // }
 
   // fab.presentPart();
 }
