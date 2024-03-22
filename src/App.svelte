@@ -5,7 +5,6 @@
   import { EditorState } from "@codemirror/state";
   import { onMount } from "svelte";
 
-  // try doing it cleaner here
   const state = {
     fabLog: "./fablog1.json",
     sketch: "./sketchFablog1.js",
