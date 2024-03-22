@@ -7,11 +7,11 @@
 
   // try doing it cleaner here
   const state = {
-    fabLog: "/fablog1.json",
-    sketch: "/sketchFablog1.js",
+    fabLog: "/fabscription/public/fablog1.json",
+    sketch: "/fabscription/public/sketchFablog1.js",
     gcodeText: null,
 
-    videoValue: "/videoFablog1.webm", // put a default value here
+    videoValue: "/fabscription/videoFablog1.webm", // put a default value here
     videoElement: null,
     gcodeView: null, // the codemirror component view
     sketchView: null,
