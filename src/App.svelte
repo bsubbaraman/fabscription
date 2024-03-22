@@ -6,11 +6,11 @@
   import { onMount } from "svelte";
 
   const state = {
-    fabLog: "./fablog1.json",
-    sketch: "./sketchFablog1.js",
+    fabLog: "./fablog2.json",
+    sketch: "./sketchFablog2.js",
     gcodeText: null,
 
-    videoValue: "./videoFablog1.webm", // put a default value here
+    videoValue: "./videoFablog2.mp4", // put a default value here
     videoElement: null,
     gcodeView: null, // the codemirror component view
     sketchView: null,
